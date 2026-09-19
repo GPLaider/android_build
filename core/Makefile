@@ -1253,9 +1253,13 @@ INTERNAL_PREBUILT_BOOTIMAGE :=
 
 # Split lunches (especially the system side lunch) can have init_boot enabled without the kernel,
 # handle that case and continue to pass the OS-version/patch-level values into the init_boot.img.
+ifdef BOARD_MKBOOTIMG_VERSION_ARGS
+INTERNAL_MKBOOTIMG_VERSION_ARGS := $(BOARD_MKBOOTIMG_VERSION_ARGS)
+else
 INTERNAL_MKBOOTIMG_VERSION_ARGS := \
   --os_version $(PLATFORM_VERSION_LAST_STABLE) \
   --os_patch_level $(PLATFORM_SECURITY_PATCH)
+endif
 
 my_installed_prebuilt_gki_apex := $(strip $(foreach package,$(PRODUCT_PACKAGES),$(if $(ALL_MODULES.$(package).EXTRACTED_BOOT_IMAGE),$(package))))
 ifdef my_installed_prebuilt_gki_apex
@@ -1780,7 +1784,10 @@ ifdef BOARD_PREBUILT_VENDOR_BOOTIMAGE
 INTERNAL_PREBUILT_VENDOR_BOOTIMAGE := $(BOARD_PREBUILT_VENDOR_BOOTIMAGE)
 INSTALLED_VENDOR_BOOTIMAGE_TARGET := $(PRODUCT_OUT)/vendor_boot.img
 
-ifeq ($(BOARD_AVB_ENABLE),true)
+ifeq ($(BOARD_PREBUILT_VENDOR_BOOTIMAGE_PRESERVE_AVB_FOOTER),true)
+$(INSTALLED_VENDOR_BOOTIMAGE_TARGET): $(INTERNAL_PREBUILT_VENDOR_BOOTIMAGE)
+	cp $(INTERNAL_PREBUILT_VENDOR_BOOTIMAGE) $@
+else ifeq ($(BOARD_AVB_ENABLE),true)
 $(INSTALLED_VENDOR_BOOTIMAGE_TARGET): $(INTERNAL_PREBUILT_VENDOR_BOOTIMAGE) $(AVBTOOL) $(BOARD_AVB_VENDOR_BOOT_KEY_PATH)
 	cp $(INTERNAL_PREBUILT_VENDOR_BOOTIMAGE) $@
 	chmod +w $@
@@ -1793,7 +1800,7 @@ else
 $(INSTALLED_VENDOR_BOOTIMAGE_TARGET): $(INTERNAL_PREBUILT_VENDOR_BOOTIMAGE)
 	cp $(INTERNAL_PREBUILT_VENDOR_BOOTIMAGE) $@
 
-endif # BOARD_AVB_ENABLE
+endif # BOARD_PREBUILT_VENDOR_BOOTIMAGE_PRESERVE_AVB_FOOTER
 $(call declare-1p-container,$(INSTALLED_VENDOR_BOOTIMAGE_TARGET),)
 $(call declare-container-license-deps,$(INSTALLED_VENDOR_BOOTIMAGE_TARGET),$(INTERNAL_PREBUILT_VENDOR_BOOTIMAGE),$(PRODUCT_OUT)/:/)
 endif # BOARD_PREBUILT_VENDOR_BOOTIMAGE
@@ -4819,8 +4826,9 @@ BOARD_AVB_SYSTEM_EXT_ADD_HASHTREE_FOOTER_ARGS += \
     --prop com.android.build.system_ext.fingerprint:$(BUILD_FINGERPRINT_FROM_FILE) \
     --prop com.android.build.system_ext.security_patch:$(PLATFORM_SECURITY_PATCH)
 
+BOOT_FINGERPRINT ?= $(BUILD_FINGERPRINT_FROM_FILE)
 BOARD_AVB_BOOT_ADD_HASH_FOOTER_ARGS += \
-    --prop com.android.build.boot.fingerprint:$(BUILD_FINGERPRINT_FROM_FILE)
+    --prop com.android.build.boot.fingerprint:$(BOOT_FINGERPRINT)
 
 BOARD_AVB_INIT_BOOT_ADD_HASH_FOOTER_ARGS += \
     --prop com.android.build.init_boot.fingerprint:$(BUILD_FINGERPRINT_FROM_FILE)
@@ -6029,6 +6037,9 @@ ifeq ($(INSTALLED_BOOTIMAGE_TARGET),)
 	$(hide) echo "no_boot=true" >> $@
 else
 	echo "boot_images=$(foreach b,$(INSTALLED_BOOTIMAGE_TARGET),$(notdir $(b)))" >> $@
+endif
+ifeq ($(BOARD_PREBUILT_BOOTIMAGE_PRESERVE_PAYLOAD),true)
+	$(hide) echo "preserve_prebuilt_boot_payload=true" >> $@
 endif
 ifneq ($(INSTALLED_INIT_BOOT_IMAGE_TARGET),)
 	$(hide) echo "init_boot=true" >> $@

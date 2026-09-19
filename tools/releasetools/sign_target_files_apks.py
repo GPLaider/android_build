@@ -636,16 +636,38 @@ def GetOtaSigningArgs():
   return args
 
 
+def PreservePrebuiltBootPayload(unzip_dir, info_dict):
+  """Stage an installed prebuilt boot image for payload-preserving re-signing."""
+  if info_dict.get("preserve_prebuilt_boot_payload") != "true":
+    return
+
+  installed_boot = os.path.join(unzip_dir, "IMAGES", "boot.img")
+  prebuilt_boot = os.path.join(unzip_dir, "PREBUILT_IMAGES", "boot.img")
+  if not os.path.exists(installed_boot):
+    if os.path.exists(prebuilt_boot):
+      return
+    raise common.ExternalError(
+        "preserve_prebuilt_boot_payload requires IMAGES/boot.img")
+
+  os.makedirs(os.path.dirname(prebuilt_boot), exist_ok=True)
+  os.replace(installed_boot, prebuilt_boot)
+
+
 def RegenerateKernelPartitions(input_tf_zip: zipfile.ZipFile, output_tf_zip: zipfile.ZipFile, misc_info):
-  """Re-generate boot and dtbo partitions using new signing configuration"""
+  """Re-generate boot metadata and preserve prebuilt hardware partitions."""
   files_to_unzip = [
-      "PREBUILT_IMAGES/*", "BOOTABLE_IMAGES/*.img", "*/boot_16k.img", "*/dtbo_16k.img"]
+      "PREBUILT_IMAGES/*", "BOOTABLE_IMAGES/*.img",
+      "IMAGES/boot.img",
+      "IMAGES/vendor_boot.img", "IMAGES/vendor.img",
+      "IMAGES/vendor_dlkm.img", "IMAGES/system_dlkm.img",
+      "*/boot_16k.img", "*/dtbo_16k.img"]
   if OPTIONS.input_tmp is None:
     OPTIONS.input_tmp = common.UnzipTemp(input_tf_zip.filename, files_to_unzip)
   else:
     common.UnzipToDir(input_tf_zip.filename, OPTIONS.input_tmp, files_to_unzip)
   unzip_dir = OPTIONS.input_tmp
   os.makedirs(os.path.join(unzip_dir, "IMAGES"), exist_ok=True)
+  PreservePrebuiltBootPayload(unzip_dir, misc_info)
 
   boot_image = common.GetBootableImage(
       "IMAGES/boot.img", "boot.img", unzip_dir, "BOOT", misc_info)
@@ -654,6 +676,17 @@ def RegenerateKernelPartitions(input_tf_zip: zipfile.ZipFile, output_tf_zip: zip
     boot_image = os.path.join(unzip_dir, boot_image.name)
     common.ZipWrite(output_tf_zip, boot_image, "IMAGES/boot.img",
                     compress_type=zipfile.ZIP_STORED)
+  vendor_boot_image = os.path.join(unzip_dir, "IMAGES", "vendor_boot.img")
+  if os.path.exists(vendor_boot_image):
+    common.ZipWrite(
+        output_tf_zip, vendor_boot_image, "IMAGES/vendor_boot.img",
+        compress_type=zipfile.ZIP_STORED)
+  for image_name in ("vendor.img", "vendor_dlkm.img", "system_dlkm.img"):
+    image_path = os.path.join(unzip_dir, "IMAGES", image_name)
+    if os.path.exists(image_path):
+      common.ZipWrite(
+          output_tf_zip, image_path, "IMAGES/" + image_name,
+          compress_type=zipfile.ZIP_STORED)
   if misc_info.get("has_dtbo") == "true":
     add_img_to_target_files.AddDtbo(output_tf_zip)
   return unzip_dir

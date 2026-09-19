@@ -960,7 +960,10 @@ def CopyInputDirectory(src, dst, filter_file):
         sys.exit(f"{line}: escapes staging directory by starting with ../ or /")
       full_src = os.path.join(src, line)
       full_dst = os.path.join(dst, line)
-      if os.path.isdir(full_src):
+      # Do not follow directory symlinks here. Absolute partition compatibility
+      # links such as system/vendor -> /vendor may resolve to a host directory,
+      # which would silently turn the image entry into an empty directory.
+      if os.path.isdir(full_src) and not os.path.islink(full_src):
         os.makedirs(full_dst, exist_ok=True)
       else:
         os.makedirs(os.path.dirname(full_dst), exist_ok=True)

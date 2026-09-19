@@ -23,7 +23,7 @@ import common
 import test_utils
 from sign_target_files_apks import (
     CheckApkAndApexKeysAvailable, EditTags, GetApkFileInfo, ParseAvbInfo,
-    ReadApexKeysInfo, ReplaceCerts, RewriteAvbProps, RewriteProps,
+    PreservePrebuiltBootPayload, ReadApexKeysInfo, ReplaceCerts, RewriteAvbProps, RewriteProps,
     WriteOtacerts)
 
 
@@ -46,6 +46,25 @@ name="apex.apexd_test_different_app.apex" public_key="system/apex/apexd/apexd_te
 
   def setUp(self):
     self.testdata_dir = test_utils.get_testdata_dir()
+
+  def test_PreservePrebuiltBootPayload(self):
+    target_files_dir = common.MakeTempDir()
+    installed_boot = os.path.join(target_files_dir, "IMAGES", "boot.img")
+    prebuilt_boot = os.path.join(
+        target_files_dir, "PREBUILT_IMAGES", "boot.img")
+    os.makedirs(os.path.dirname(installed_boot))
+    os.makedirs(os.path.dirname(prebuilt_boot))
+    with open(installed_boot, "wb") as boot_file:
+      boot_file.write(b"exact-stock-boot-payload")
+    with open(prebuilt_boot, "wb") as boot_file:
+      boot_file.write(b"stale-prebuilt-boot-payload")
+
+    PreservePrebuiltBootPayload(
+        target_files_dir, {"preserve_prebuilt_boot_payload": "true"})
+
+    self.assertFalse(os.path.exists(installed_boot))
+    with open(prebuilt_boot, "rb") as boot_file:
+      self.assertEqual(b"exact-stock-boot-payload", boot_file.read())
 
   def test_EditTags(self):
     self.assertEqual(EditTags('dev-keys'), ('release-keys'))
